@@ -3,7 +3,10 @@ import { DataSourceOptions } from 'typeorm';
 import { Activation } from '../entities/activation.entity';
 import { Promocode } from '../entities/promocode.entity';
 
-const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
+const parseBoolean = (
+  value: string | undefined,
+  fallback: boolean,
+): boolean => {
   if (value === undefined) {
     return fallback;
   }

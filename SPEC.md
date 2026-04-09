@@ -82,3 +82,73 @@
 - `DB_SSL` = `true` | `false` (по умолчанию `false`)
 - `TYPEORM_SYNCHRONIZE` = `true` | `false` (по умолчанию `false`)
 - `TYPEORM_LOGGING` = `true` | `false` (по умолчанию `false`)
+
+## API v1: промокоды
+
+Базовый префикс:
+- `/api/v1/promocodes`
+
+Формат времени:
+- API принимает любые валидные строки ISO 8601 для входящих timestamp-полей.
+- API всегда возвращает timestamp-поля в UTC в формате ISO 8601 (например, `2026-04-09T05:24:31.000Z`).
+
+### POST `/api/v1/promocodes`
+Назначение: создать новый промокод.
+
+Тело запроса (`application/json`):
+- `code string` — обязательно, длина от `1` до `15` символов.
+- `discount number` — обязательно, целое число от `1` до `100`.
+- `activation_limit number | null` — необязательно, если задано, целое число `>= 0`.
+  - `null` означает, что лимита активаций нет.
+  - `0` валиден и означает, что промокод сразу недоступен для активации.
+- `valid_until string | null` — необязательно.
+  - `null` означает бессрочное действие промокода.
+  - если задано значение, это валидный ISO 8601 timestamp.
+
+Поля, которые нельзя передавать при создании:
+- `activation_count`
+- `created_at`
+- `updated_at`
+
+Ответ:
+- `201 Created` и объект промокода со всеми полями:
+  - `code`
+  - `discount`
+  - `activation_limit`
+  - `activation_count`
+  - `valid_until`
+  - `created_at`
+  - `updated_at`
+- `400 Bad Request` при нарушении валидации.
+- `409 Conflict` если промокод с таким `code` уже существует.
+
+### GET `/api/v1/promocodes/{code}`
+Назначение: получить промокод по его коду.
+
+Параметры пути:
+- `code string` — длина от `1` до `15` символов.
+
+Ответ:
+- `200 OK` и объект промокода со всеми полями:
+  - `code`
+  - `discount`
+  - `activation_limit`
+  - `activation_count`
+  - `valid_until`
+  - `created_at`
+  - `updated_at`
+- `404 Not Found` если запись не найдена.
+
+### GET `/api/v1/promocodes`
+Назначение: получить список промокодов.
+
+Ответ:
+- `200 OK` и массив объектов промокодов.
+- Каждый объект содержит все поля:
+  - `code`
+  - `discount`
+  - `activation_limit`
+  - `activation_count`
+  - `valid_until`
+  - `created_at`
+  - `updated_at`
