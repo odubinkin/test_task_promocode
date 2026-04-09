@@ -5,9 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsOrderValue, Repository } from 'typeorm';
 import { Promocode } from '../entities/promocode.entity';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
+import {
+  GetPromocodesQueryDto,
+  PROMOCODES_LIST_MAX_LIMIT,
+  PromocodeSortBy,
+  SORT_BY_FIELDS,
+  SORT_ORDERS,
+} from './dto/get-promocodes-query.dto';
 
 const PROMOCODE_ALREADY_EXISTS_ERROR =
   'Promocode with code "%s" already exists';
@@ -15,6 +22,10 @@ const DISCOUNT_RANGE_ERROR = 'discount must be between 1 and 100';
 const ACTIVATION_LIMIT_RANGE_ERROR =
   'activation_limit must be null or greater than or equal to 0';
 const PROMOCODE_NOT_FOUND_ERROR = 'Promocode with code "%s" not found';
+const INVALID_LIMIT_ERROR = `limit must be an integer between 0 and ${PROMOCODES_LIST_MAX_LIMIT}`;
+const INVALID_OFFSET_ERROR = 'offset must be an integer greater than or equal to 0';
+const INVALID_SORT_BY_ERROR = `sortBy must be one of: ${SORT_BY_FIELDS.join(', ')}`;
+const INVALID_SORT_ORDER_ERROR = `sortOrder must be one of: ${SORT_ORDERS.join(', ')}`;
 
 @Injectable()
 /**
@@ -92,11 +103,40 @@ export class PromocodesService {
   }
 
   /**
-   * Returns all promocodes ordered by creation date in descending order.
+   * Returns promocodes with pagination and configurable sorting.
    */
-  list(): Promise<Promocode[]> {
+  list(query: GetPromocodesQueryDto): Promise<Promocode[]> {
+    if (
+      !Number.isInteger(query.limit) ||
+      query.limit < 0 ||
+      query.limit > PROMOCODES_LIST_MAX_LIMIT
+    ) {
+      throw new BadRequestException(INVALID_LIMIT_ERROR);
+    }
+
+    if (!Number.isInteger(query.offset) || query.offset < 0) {
+      throw new BadRequestException(INVALID_OFFSET_ERROR);
+    }
+
+    if (!SORT_BY_FIELDS.includes(query.sortBy)) {
+      throw new BadRequestException(INVALID_SORT_BY_ERROR);
+    }
+
+    if (!SORT_ORDERS.includes(query.sortOrder)) {
+      throw new BadRequestException(INVALID_SORT_ORDER_ERROR);
+    }
+
+    const sortOrder: FindOptionsOrderValue =
+      query.sortOrder === 'asc' ? 'ASC' : 'DESC';
+    const order = { [query.sortBy]: sortOrder } as Record<
+      PromocodeSortBy,
+      FindOptionsOrderValue
+    >;
+
     return this.promocodeRepository.find({
-      order: { createdAt: 'DESC' },
+      take: query.limit,
+      skip: query.offset,
+      order,
     });
   }
 }

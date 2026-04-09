@@ -8,6 +8,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Repository } from 'typeorm';
 import { Promocode } from '../entities/promocode.entity';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
+import {
+  GetPromocodesQueryDto,
+  PROMOCODES_LIST_MAX_LIMIT,
+} from './dto/get-promocodes-query.dto';
 import { PromocodesService } from './promocodes.service';
 
 type MockRepository = jest.Mocked<
@@ -178,13 +182,116 @@ describe('PromocodesService', () => {
     );
   });
 
-  it('returns list of promocodes ordered by createdAt DESC', async () => {
+  it('returns list of promocodes with default sorting and pagination', async () => {
+    const query: GetPromocodesQueryDto = {
+      limit: 20,
+      offset: 0,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    };
     const entities = [makePromocode({ code: 'A' }), makePromocode({ code: 'B' })];
     repository.find.mockResolvedValue(entities);
 
-    await expect(service.list()).resolves.toEqual(entities);
+    await expect(service.list(query)).resolves.toEqual(entities);
     expect(repository.find).toHaveBeenCalledWith({
+      take: 20,
+      skip: 0,
       order: { createdAt: 'DESC' },
     });
+  });
+
+  it('returns list of promocodes with custom sorting and pagination', async () => {
+    const query: GetPromocodesQueryDto = {
+      limit: 5,
+      offset: 10,
+      sortBy: 'discount',
+      sortOrder: 'asc',
+    };
+    const entities = [makePromocode({ code: 'C', discount: 5 })];
+    repository.find.mockResolvedValue(entities);
+
+    await expect(service.list(query)).resolves.toEqual(entities);
+    expect(repository.find).toHaveBeenCalledWith({
+      take: 5,
+      skip: 10,
+      order: { discount: 'ASC' },
+    });
+  });
+
+  it('returns empty list when limit is 0', async () => {
+    const query: GetPromocodesQueryDto = {
+      limit: 0,
+      offset: 0,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    };
+    repository.find.mockResolvedValue([]);
+
+    await expect(service.list(query)).resolves.toEqual([]);
+    expect(repository.find).toHaveBeenCalledWith({
+      take: 0,
+      skip: 0,
+      order: { createdAt: 'DESC' },
+    });
+  });
+
+  it('throws BadRequest for limit greater than max', async () => {
+    const query = {
+      limit: PROMOCODES_LIST_MAX_LIMIT + 1,
+      offset: 0,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    } as GetPromocodesQueryDto;
+
+    expect(() => service.list(query)).toThrow(BadRequestException);
+    expect(repository.find).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest for negative limit', async () => {
+    const query = {
+      limit: -1,
+      offset: 0,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    } as GetPromocodesQueryDto;
+
+    expect(() => service.list(query)).toThrow(BadRequestException);
+    expect(repository.find).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest for non-integer offset', async () => {
+    const query = {
+      limit: 20,
+      offset: 1.5,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    } as GetPromocodesQueryDto;
+
+    expect(() => service.list(query)).toThrow(BadRequestException);
+    expect(repository.find).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest for invalid sortBy', async () => {
+    const query = {
+      limit: 20,
+      offset: 0,
+      sortBy: 'code',
+      sortOrder: 'desc',
+    } as unknown as GetPromocodesQueryDto;
+
+    expect(() => service.list(query)).toThrow(BadRequestException);
+    expect(repository.find).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest for invalid sortOrder', async () => {
+    const query = {
+      limit: 20,
+      offset: 0,
+      sortBy: 'createdAt',
+      sortOrder: 'DESC',
+    } as unknown as GetPromocodesQueryDto;
+
+    expect(() => service.list(query)).toThrow(BadRequestException);
+    expect(repository.find).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Promocode } from '../entities/promocode.entity';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import { GetPromocodeParamsDto } from './dto/get-promocode-params.dto';
+import { GetPromocodesQueryDto } from './dto/get-promocodes-query.dto';
 import { PromocodesController } from './promocodes.controller';
 import { PromocodesService } from './promocodes.service';
 
@@ -89,12 +90,18 @@ describe('PromocodesController', () => {
   });
 
   it('returns list of promocodes', async () => {
+    const query: GetPromocodesQueryDto = {
+      limit: 20,
+      offset: 0,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    };
     const first = makePromocode({ code: 'FIRST' });
     const second = makePromocode({ code: 'SECOND', discount: 20 });
 
     service.list.mockResolvedValue([first, second]);
 
-    await expect(controller.list()).resolves.toEqual([
+    await expect(controller.list(query)).resolves.toEqual([
       {
         code: 'FIRST',
         discount: 10,
@@ -115,5 +122,6 @@ describe('PromocodesController', () => {
       },
     ]);
     expect(service.list).toHaveBeenCalledTimes(1);
+    expect(service.list).toHaveBeenCalledWith(query);
   });
 });

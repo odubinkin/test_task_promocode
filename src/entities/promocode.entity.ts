@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryColumn,
   UpdateDateColumn,
@@ -10,6 +11,11 @@ import {
 import { Activation } from './activation.entity';
 
 @Entity({ name: 'promocode' })
+@Index('promocode_created_at_idx', ['createdAt'])
+@Index('promocode_updated_at_idx', ['updatedAt'])
+@Index('promocode_valid_until_idx', ['validUntil'])
+@Index('promocode_discount_idx', ['discount'])
+@Index('promocode_activation_limit_idx', ['activationLimit'])
 @Check('promocode_discount_check', '"discount" BETWEEN 1 AND 100')
 @Check(
   'promocode_activation_limit_check',

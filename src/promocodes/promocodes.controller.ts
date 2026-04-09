@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import { GetPromocodeParamsDto } from './dto/get-promocode-params.dto';
+import { GetPromocodesQueryDto } from './dto/get-promocodes-query.dto';
 import {
   PromocodeResponse,
   toPromocodeResponse,
@@ -37,11 +38,11 @@ export class PromocodesController {
   }
 
   /**
-   * Returns the full list of promocodes.
+   * Returns a list of promocodes with pagination and sorting.
    */
   @Get()
-  async list(): Promise<PromocodeResponse[]> {
-    const promocodes = await this.promocodesService.list();
+  async list(@Query() query: GetPromocodesQueryDto): Promise<PromocodeResponse[]> {
+    const promocodes = await this.promocodesService.list(query);
 
     return promocodes.map(toPromocodeResponse);
   }

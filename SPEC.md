@@ -41,6 +41,18 @@
 - `promocode_activation_consistency_check`
   - `activation_limit is null or activation_count <= activation_limit`
 
+Индексы:
+- `promocode_created_at_idx` (`created_at`)
+  - Нужен для сортировки списка промокодов по `createdAt`.
+- `promocode_updated_at_idx` (`updated_at`)
+  - Нужен для сортировки по `updatedAt` в `GET /api/v1/promocodes`.
+- `promocode_valid_until_idx` (`valid_until`)
+  - Нужен для сортировки по `validUntil`.
+- `promocode_discount_idx` (`discount`)
+  - Нужен для сортировки по `discount`.
+- `promocode_activation_limit_idx` (`activation_limit`)
+  - Нужен для сортировки по `activationLimit`.
+
 ## Таблица `activation`
 Назначение: хранение факта использования промокода конкретным email.
 
@@ -141,6 +153,19 @@
 
 ### GET `/api/v1/promocodes`
 Назначение: получить список промокодов.
+
+Параметры запроса:
+- `limit number` — необязательно, по умолчанию `20`, целое число в диапазоне `0..1000` (верхняя граница задана PROMOCODES_LIST_MAX_LIMIT).
+- `offset number` — необязательно, по умолчанию `0`, целое число `>= 0`.
+- `sortBy string` — необязательно, по умолчанию `createdAt`.
+  - Доступные поля:
+  - `createdAt`
+  - `updatedAt`
+  - `validUntil`
+  - `discount`
+  - `activationLimit`
+- `sortOrder string` — необязательно, по умолчанию `desc`.
+  - Допустимые значения: `asc`, `desc`.
 
 Ответ:
 - `200 OK` и массив объектов промокодов.
