@@ -5,7 +5,8 @@ import {
 } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { Activation } from '../entities/activation.entity';
 import { Promocode } from '../entities/promocode.entity';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import {
@@ -20,6 +21,12 @@ type MockRepository = jest.Mocked<
     'exists' | 'create' | 'save' | 'findOne' | 'find'
   >
 >;
+type MockDataSource = jest.Mocked<Pick<DataSource, 'transaction'>>;
+type MockEntityManager = {
+  findOne: jest.Mock;
+  create: jest.Mock;
+  save: jest.Mock;
+};
 
 const makeDto = (
   overrides: Partial<CreatePromocodeDto> = {},
@@ -50,6 +57,8 @@ const makePromocode = (overrides: Partial<Promocode> = {}): Promocode => {
 describe('PromocodesService', () => {
   let service: PromocodesService;
   let repository: MockRepository;
+  let dataSource: MockDataSource;
+  let transactionManager: MockEntityManager;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -65,11 +74,30 @@ describe('PromocodesService', () => {
             find: jest.fn(),
           },
         },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<PromocodesService>(PromocodesService);
     repository = module.get(getRepositoryToken(Promocode));
+    dataSource = module.get(DataSource);
+    transactionManager = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+    dataSource.transaction.mockImplementation(async (...args: unknown[]) => {
+      const callback = args[args.length - 1] as (
+        manager: EntityManager,
+      ) => Promise<unknown>;
+
+      return callback(transactionManager as unknown as EntityManager);
+    });
   });
 
   it('throws BadRequest for invalid discount', async () => {
@@ -294,4 +322,84 @@ describe('PromocodesService', () => {
     expect(() => service.list(query)).toThrow(BadRequestException);
     expect(repository.find).not.toHaveBeenCalled();
   });
+
+  it('activates promocode for normalized email and increments activation count', async () => {
+    const promocode = makePromocode({ activationCount: 0, activationLimit: 2 });
+    const activation = { id: '1' } as Activation;
+
+    transactionManager.findOne
+      .mockResolvedValueOnce(promocode)
+      .mockResolvedValueOnce(null);
+    transactionManager.create.mockReturnValue(activation);
+    transactionManager.save.mockResolvedValue(activation);
+
+    await expect(
+      service.activate('SPRING10', 'User@Example.COM'),
+    ).resolves.toBeUndefined();
+
+    expect(transactionManager.findOne).toHaveBeenNthCalledWith(1, Promocode, {
+      where: { code: 'SPRING10' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(transactionManager.findOne).toHaveBeenNthCalledWith(2, Activation, {
+      where: { email: 'user@example.com', code: 'SPRING10' },
+    });
+    expect(transactionManager.create).toHaveBeenCalledWith(Activation, {
+      email: 'user@example.com',
+      code: 'SPRING10',
+    });
+    expect(transactionManager.save).toHaveBeenNthCalledWith(
+      1,
+      Activation,
+      activation,
+    );
+    expect(transactionManager.save).toHaveBeenNthCalledWith(
+      2,
+      Promocode,
+      expect.objectContaining({ code: 'SPRING10', activationCount: 1 }),
+    );
+  });
+
+  it('throws Conflict when the user already activated promocode', async () => {
+    transactionManager.findOne
+      .mockResolvedValueOnce(makePromocode())
+      .mockResolvedValueOnce({ id: '1' } as Activation);
+
+    await expect(
+      service.activate('SPRING10', 'user@example.com'),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(transactionManager.findOne).toHaveBeenCalledTimes(2);
+    expect(transactionManager.create).not.toHaveBeenCalled();
+    expect(transactionManager.save).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest when promocode is missing during activation', async () => {
+    transactionManager.findOne.mockResolvedValueOnce(null);
+
+    await expect(
+      service.activate('MISSING', 'user@example.com'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transactionManager.create).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest when promocode activation limit is reached', async () => {
+    transactionManager.findOne
+      .mockResolvedValueOnce(makePromocode({ activationCount: 3, activationLimit: 3 }));
+
+    await expect(
+      service.activate('SPRING10', 'user@example.com'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('throws BadRequest when promocode is expired', async () => {
+    transactionManager.findOne
+      .mockResolvedValueOnce(makePromocode({ validUntil: new Date('2020-01-01T00:00:00.000Z') }));
+
+    await expect(
+      service.activate('SPRING10', 'user@example.com'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
 });

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { ActivatePromocodeDto } from './dto/activate-promocode.dto';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import { GetPromocodeParamsDto } from './dto/get-promocode-params.dto';
 import { GetPromocodesQueryDto } from './dto/get-promocodes-query.dto';
@@ -45,5 +55,17 @@ export class PromocodesController {
     const promocodes = await this.promocodesService.list(query);
 
     return promocodes.map(toPromocodeResponse);
+  }
+
+  /**
+   * Activates promocode for the provided email.
+   */
+  @Post(':code/activate')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async activate(
+    @Param() params: GetPromocodeParamsDto,
+    @Body() dto: ActivatePromocodeDto,
+  ): Promise<void> {
+    await this.promocodesService.activate(params.code, dto.email);
   }
 }

@@ -177,3 +177,28 @@
   - `valid_until`
   - `created_at`
   - `updated_at`
+
+### POST `/api/v1/promocodes/{code}/activate`
+Назначение: активировать промокод для email.
+
+Параметры пути:
+- `code string` — длина от `1` до `15` символов.
+
+Тело запроса (`application/json`):
+- `email string` — обязательно, валидный email.
+  - перед активацией нормализуется в lowercase.
+
+Логика:
+- Проверяется, что такой email еще не активировал данный промокод.
+  - Поиск выполняется по паре (`promocode_code`, `email`) в этом порядке, чтобы использовать индекс/уникальное ограничение `activation_email_promocode_unique`.
+- Проверяется валидность промокода:
+  - `(activation_limit is null) or (activation_limit > activation_count)`
+  - `(valid_until is null) or (valid_until > now())`
+- В рамках одной транзакции:
+  - создается запись в `activation`;
+  - у `promocode` увеличивается `activation_count` на `1`.
+
+Ответ:
+- `204 No Content` при успешной активации.
+- `400 Bad Request` для невалидного промокода или некорректных входных параметров.
+- `409 Conflict` если этот email уже активировал данный промокод.

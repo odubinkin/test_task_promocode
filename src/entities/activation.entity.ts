@@ -10,7 +10,7 @@ import {
 import { Promocode } from './promocode.entity';
 
 @Entity({ name: 'activation' })
-@Unique('activation_email_promocode_unique', ['promocodeCode', 'email'])
+@Unique('activation_email_promocode_unique', ['code', 'email'])
 export class Activation {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
@@ -19,7 +19,7 @@ export class Activation {
   email: string;
 
   @Column({ name: 'promocode_code', type: 'varchar', length: 15 })
-  promocodeCode: string;
+  code: string;
 
   @CreateDateColumn({
     name: 'created_at',

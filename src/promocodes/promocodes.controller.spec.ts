@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Promocode } from '../entities/promocode.entity';
+import { ActivatePromocodeDto } from './dto/activate-promocode.dto';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import { GetPromocodeParamsDto } from './dto/get-promocode-params.dto';
 import { GetPromocodesQueryDto } from './dto/get-promocodes-query.dto';
@@ -36,6 +37,7 @@ describe('PromocodesController', () => {
             create: jest.fn(),
             getByCode: jest.fn(),
             list: jest.fn(),
+            activate: jest.fn(),
           },
         },
       ],
@@ -123,5 +125,14 @@ describe('PromocodesController', () => {
     ]);
     expect(service.list).toHaveBeenCalledTimes(1);
     expect(service.list).toHaveBeenCalledWith(query);
+  });
+
+  it('activates promocode for email', async () => {
+    const params: GetPromocodeParamsDto = { code: 'SPRING10' };
+    const dto: ActivatePromocodeDto = { email: 'User@Example.com' };
+    service.activate.mockResolvedValue();
+
+    await expect(controller.activate(params, dto)).resolves.toBeUndefined();
+    expect(service.activate).toHaveBeenCalledWith('SPRING10', 'User@Example.com');
   });
 });

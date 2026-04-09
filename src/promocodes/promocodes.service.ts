@@ -5,7 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsOrderValue, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  FindOptionsOrderValue,
+  Repository,
+} from 'typeorm';
+import { Activation } from '../entities/activation.entity';
 import { Promocode } from '../entities/promocode.entity';
 import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import {
@@ -26,6 +32,9 @@ const INVALID_LIMIT_ERROR = `limit must be an integer between 0 and ${PROMOCODES
 const INVALID_OFFSET_ERROR = 'offset must be an integer greater than or equal to 0';
 const INVALID_SORT_BY_ERROR = `sortBy must be one of: ${SORT_BY_FIELDS.join(', ')}`;
 const INVALID_SORT_ORDER_ERROR = `sortOrder must be one of: ${SORT_ORDERS.join(', ')}`;
+const INVALID_PROMOCODE_ERROR = 'Promocode is invalid';
+const PROMOCODE_ALREADY_ACTIVATED_ERROR =
+  'Promocode with code "%s" is already activated for email "%s"';
 
 @Injectable()
 /**
@@ -35,6 +44,7 @@ export class PromocodesService {
   constructor(
     @InjectRepository(Promocode)
     private readonly promocodeRepository: Repository<Promocode>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -138,5 +148,66 @@ export class PromocodesService {
       skip: query.offset,
       order,
     });
+  }
+
+  /**
+   * Activates promocode for a specific email.
+   */
+  async activate(code: string, email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase();
+
+    await this.dataSource.transaction(async (manager) => {
+      const promocode = await manager.findOne(Promocode, {
+        where: { code },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!promocode || !this.isPromocodeValid(promocode)) {
+        throw new BadRequestException(INVALID_PROMOCODE_ERROR);
+      }
+
+      await this.ensureEmailNotActivated(manager, normalizedEmail, code);
+
+      const activation = manager.create(Activation, {
+        email: normalizedEmail,
+        code,
+      });
+
+      await manager.save(Activation, activation);
+
+      promocode.activationCount += 1;
+      await manager.save(Promocode, promocode);
+    });
+  }
+
+  private async ensureEmailNotActivated(
+    manager: EntityManager,
+    email: string,
+    code: string,
+  ): Promise<void> {
+    const existingActivation = await manager.findOne(Activation, {
+      where: {
+        code,
+        email,
+      },
+    });
+
+    if (existingActivation) {
+      throw new ConflictException(
+        PROMOCODE_ALREADY_ACTIVATED_ERROR
+          .replace('%s', code)
+          .replace('%s', email),
+      );
+    }
+  }
+
+  private isPromocodeValid(promocode: Promocode): boolean {
+    const now = new Date();
+    const hasActivationSlot =
+      promocode.activationLimit === null ||
+      promocode.activationLimit > promocode.activationCount;
+    const hasValidDate = promocode.validUntil === null || promocode.validUntil > now;
+
+    return hasActivationSlot && hasValidDate;
   }
 }
