@@ -69,9 +69,24 @@ npm run start:prod
 # unit-тесты
 npm run test
 
-# e2e-тесты
+# e2e-тесты (используется .env.test)
 npm run test:e2e
 
 # покрытие
 npm run test:cov
 ```
+
+### Конфигурация e2e
+
+`npm run test:e2e` всегда загружает переменные окружения из файла `.env.test`.
+
+Перед первым запуском создайте локальный `.env.test`:
+
+```bash
+cp .env.example .env.test
+```
+
+Рекомендуется использовать отдельную тестовую БД, например:
+- `DB_NAME=promocode_test`
+- `DB_AUTO_CREATE=true`
+- `TYPEORM_SYNCHRONIZE=true`
