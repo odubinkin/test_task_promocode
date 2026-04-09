@@ -35,6 +35,8 @@ npm install
 - `DB_PASSWORD` (по умолчанию `postgres`)
 - `DB_NAME` (по умолчанию `promocode`)
 - `DB_SSL` (`true` / `false`, по умолчанию `false`)
+- `DB_AUTO_CREATE` (`true` / `false`, по умолчанию `false`) — автоматически создать `DB_NAME`, если базы нет
+- `DB_BOOTSTRAP_DATABASE` (по умолчанию `postgres`) — служебная БД для подключения перед созданием `DB_NAME`
 - `TYPEORM_SYNCHRONIZE` (`true` / `false`, по умолчанию `false`)
 - `TYPEORM_LOGGING` (`true` / `false`, по умолчанию `false`)
 
@@ -48,6 +50,18 @@ npm run start:dev
 npm run build
 npm run start:prod
 ```
+
+## OpenAPI / Swagger
+
+После запуска сервиса документация доступна по адресу:
+- `http://localhost:3000/api/docs` — Swagger UI
+- `http://localhost:3000/api/docs-json` — OpenAPI JSON
+
+Спецификация включает:
+- схемы запросов/ответов для всех endpoints;
+- ограничения полей (валидация, enum, диапазоны);
+- примеры данных;
+- типовые ошибки (`400`, `404`, `409`).
 
 ## Тесты
 
