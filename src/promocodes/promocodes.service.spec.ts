@@ -18,7 +18,7 @@ import { PromocodesService } from './promocodes.service';
 type MockRepository = jest.Mocked<
   Pick<
     Repository<Promocode>,
-    'exists' | 'create' | 'save' | 'findOne' | 'find'
+    'exists' | 'findOne' | 'find' | 'createQueryBuilder'
   >
 >;
 type MockDataSource = jest.Mocked<Pick<DataSource, 'transaction'>>;
@@ -26,6 +26,14 @@ type MockEntityManager = {
   findOne: jest.Mock;
   create: jest.Mock;
   save: jest.Mock;
+};
+
+type MockInsertQueryBuilder = {
+  insert: jest.Mock;
+  into: jest.Mock;
+  values: jest.Mock;
+  orIgnore: jest.Mock;
+  execute: jest.Mock;
 };
 
 const makeDto = (
@@ -59,6 +67,7 @@ describe('PromocodesService', () => {
   let repository: MockRepository;
   let dataSource: MockDataSource;
   let transactionManager: MockEntityManager;
+  let insertQueryBuilder: MockInsertQueryBuilder;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -68,10 +77,9 @@ describe('PromocodesService', () => {
           provide: getRepositoryToken(Promocode),
           useValue: {
             exists: jest.fn(),
-            create: jest.fn(),
-            save: jest.fn(),
             findOne: jest.fn(),
             find: jest.fn(),
+            createQueryBuilder: jest.fn(),
           },
         },
         {
@@ -86,6 +94,21 @@ describe('PromocodesService', () => {
     service = module.get<PromocodesService>(PromocodesService);
     repository = module.get(getRepositoryToken(Promocode));
     dataSource = module.get(DataSource);
+    insertQueryBuilder = {
+      insert: jest.fn(),
+      into: jest.fn(),
+      values: jest.fn(),
+      orIgnore: jest.fn(),
+      execute: jest.fn(),
+    };
+    insertQueryBuilder.insert.mockReturnValue(insertQueryBuilder);
+    insertQueryBuilder.into.mockReturnValue(insertQueryBuilder);
+    insertQueryBuilder.values.mockReturnValue(insertQueryBuilder);
+    insertQueryBuilder.orIgnore.mockReturnValue(insertQueryBuilder);
+    repository.createQueryBuilder.mockReturnValue(
+      insertQueryBuilder as unknown as ReturnType<Repository<Promocode>['createQueryBuilder']>,
+    );
+
     transactionManager = {
       findOne: jest.fn(),
       create: jest.fn(),
@@ -130,37 +153,44 @@ describe('PromocodesService', () => {
     expect(repository.exists).toHaveBeenCalledWith({
       where: { code: 'SPRING10' },
     });
-    expect(repository.save).not.toHaveBeenCalled();
+    expect(repository.createQueryBuilder).not.toHaveBeenCalled();
   });
 
-  it('creates and saves promocode when validation passes', async () => {
+  it('creates promocode when validation passes', async () => {
     const dto = makeDto();
-    const entityToSave = makePromocode();
+    const entity = makePromocode();
 
     repository.exists.mockResolvedValue(false);
-    repository.create.mockReturnValue(entityToSave);
-    repository.save.mockResolvedValue(entityToSave);
+    insertQueryBuilder.execute.mockResolvedValue({
+      identifiers: [{ code: 'SPRING10' }],
+    });
+    repository.findOne.mockResolvedValue(entity);
 
-    await expect(service.create(dto)).resolves.toBe(entityToSave);
-    expect(repository.create).toHaveBeenCalledWith({
+    await expect(service.create(dto)).resolves.toBe(entity);
+    expect(repository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    expect(insertQueryBuilder.values).toHaveBeenCalledWith({
       code: 'SPRING10',
       discount: 10,
       activationLimit: 5,
       validUntil: new Date('2026-12-01T12:00:00+03:00'),
     });
-    expect(repository.save).toHaveBeenCalledWith(entityToSave);
+    expect(repository.findOne).toHaveBeenCalledWith({
+      where: { code: 'SPRING10' },
+    });
   });
 
-  it('creates and saves promocode with null activation_limit and null valid_until', async () => {
+  it('creates promocode with null activation_limit and null valid_until', async () => {
     const dto = makeDto({ activation_limit: null, valid_until: null });
-    const entityToSave = makePromocode({ activationLimit: null, validUntil: null });
+    const entity = makePromocode({ activationLimit: null, validUntil: null });
 
     repository.exists.mockResolvedValue(false);
-    repository.create.mockReturnValue(entityToSave);
-    repository.save.mockResolvedValue(entityToSave);
+    insertQueryBuilder.execute.mockResolvedValue({
+      identifiers: [{ code: 'SPRING10' }],
+    });
+    repository.findOne.mockResolvedValue(entity);
 
-    await expect(service.create(dto)).resolves.toBe(entityToSave);
-    expect(repository.create).toHaveBeenCalledWith({
+    await expect(service.create(dto)).resolves.toBe(entity);
+    expect(insertQueryBuilder.values).toHaveBeenCalledWith({
       code: 'SPRING10',
       discount: 10,
       activationLimit: null,
@@ -168,28 +198,22 @@ describe('PromocodesService', () => {
     });
   });
 
-  it('throws Conflict on race condition when save fails and code appears', async () => {
-    const dto = makeDto();
-    const entityToSave = makePromocode();
+  it('throws Conflict when insert is ignored due to duplicate code', async () => {
+    repository.exists.mockResolvedValue(false);
+    insertQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
 
-    repository.exists.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    repository.create.mockReturnValue(entityToSave);
-    repository.save.mockRejectedValue(new Error('save failed'));
-
-    await expect(service.create(dto)).rejects.toBeInstanceOf(ConflictException);
-    expect(repository.exists).toHaveBeenCalledTimes(2);
+    await expect(service.create(makeDto())).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 
-  it('rethrows original error when save fails for non-duplicate reason', async () => {
-    const dto = makeDto();
-    const entityToSave = makePromocode();
+  it('rethrows original error when insert fails for non-duplicate reason', async () => {
     const expectedError = new Error('db unavailable');
 
-    repository.exists.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
-    repository.create.mockReturnValue(entityToSave);
-    repository.save.mockRejectedValue(expectedError);
+    repository.exists.mockResolvedValue(false);
+    insertQueryBuilder.execute.mockRejectedValue(expectedError);
 
-    await expect(service.create(dto)).rejects.toBe(expectedError);
+    await expect(service.create(makeDto())).rejects.toBe(expectedError);
   });
 
   it('returns promocode by code', async () => {

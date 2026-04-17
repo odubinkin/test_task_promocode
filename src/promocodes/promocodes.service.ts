@@ -70,28 +70,29 @@ export class PromocodesService {
       );
     }
 
-    const promocode = this.promocodeRepository.create({
-      code: dto.code,
-      discount: dto.discount,
-      activationLimit: dto.activation_limit ?? null,
-      validUntil: dto.valid_until ? new Date(dto.valid_until) : null,
-    });
+    // We still do the early business-level check above, but concurrent creates can
+    // race between exists() and insert. ON CONFLICT DO NOTHING makes that race
+    // deterministic without broad DB-error catch logic.
+    const insertResult = await this.promocodeRepository
+      .createQueryBuilder()
+      .insert()
+      .into(Promocode)
+      .values({
+        code: dto.code,
+        discount: dto.discount,
+        activationLimit: dto.activation_limit ?? null,
+        validUntil: dto.valid_until ? new Date(dto.valid_until) : null,
+      })
+      .orIgnore()
+      .execute();
 
-    try {
-      return await this.promocodeRepository.save(promocode);
-    } catch (error) {
-      const duplicateAfterSaveError = await this.promocodeRepository.exists({
-        where: { code: dto.code },
-      });
-
-      if (duplicateAfterSaveError) {
-        throw new ConflictException(
-          PROMOCODE_ALREADY_EXISTS_ERROR.replace('%s', dto.code),
-        );
-      }
-
-      throw error;
+    if (insertResult.identifiers.length === 0) {
+      throw new ConflictException(
+        PROMOCODE_ALREADY_EXISTS_ERROR.replace('%s', dto.code),
+      );
     }
+
+    return this.getByCode(dto.code);
   }
 
   /**
@@ -156,6 +157,9 @@ export class PromocodesService {
   async activate(code: string, email: string): Promise<void> {
     const normalizedEmail = email.toLowerCase();
 
+    // Transaction + row-level lock on promocode serializes all activations for
+    // the same code: validity check, duplicate activation check, activation insert,
+    // and activationCount increment are performed atomically.
     await this.dataSource.transaction(async (manager) => {
       const promocode = await manager.findOne(Promocode, {
         where: { code },
